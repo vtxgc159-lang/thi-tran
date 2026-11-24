@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Thị Trấn</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#101827;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none}
+#wrap{height:100dvh;display:flex;flex-direction:column;max-width:900px;margin:auto}
+header{padding:10px 14px;background:#172338;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-size:20px;margin:0} #stats{font-size:13px;color:#d9e7ff}
+canvas{display:block;width:100%;flex:1;min-height:0;background:#8bcf8a}
+#bottom{background:#172338;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+#hint{font-size:12px;color:#c7d5e8;max-width:55%}
+.controls{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(2,40px);gap:4px}
+button{border:0;border-radius:10px;background:#304663;color:white;font-size:19px;font-weight:700;touch-action:none}
+.controls button:active{background:#5d85b5}
+#up{grid-column:2} #left{grid-column:1;grid-row:2} #down{grid-column:2;grid-row:2} #right{grid-column:3;grid-row:2}
+#overlay{position:fixed;inset:0;background:#07101ddd;display:flex;align-items:center;justify-content:center;padding:22px}
+.panel{background:#1b2b43;border:1px solid #49617f;border-radius:18px;padding:22px;max-width:420px;width:100%;text-align:center}
+.panel h2{margin:0 0 8px;font-size:28px}.panel p{color:#d4e1f2;line-height:1.5}
+#start{padding:13px 24px;background:#1c9b69;font-size:17px}
+#toast{position:absolute;top:68px;left:50%;transform:translateX(-50%);background:#13233cdd;padding:8px 12px;border-radius:10px;font-size:13px;white-space:nowrap;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+<header><h1>🚓 THỊ TRẤN</h1><div id="stats">⭐ 0/5 hồ sơ · ⏱ 90s</div></header>
+<canvas id="game"></canvas>
+<div id="bottom"><div id="hint">Bạn là cảnh sát tuần tra. Thu thập 5 hồ sơ và chặn tên trộm!</div>
+<div class="controls">
+<button id="up">▲</button><button id="left">◀</button><button id="down">▼</button><button id="right">▶</button>
+</div></div>
+</div>
+<div id="toast">Đi tìm các hồ sơ màu vàng!</div>
+<div id="overlay"><div class="panel"><h2>🚔 THỊ TRẤN</h2><p>Một tên trộm đang chạy quanh thị trấn! Bạn là cảnh sát tuần tra: thu thập <b>5 hồ sơ</b> màu vàng rồi chạm vào tên trộm để hoàn thành nhiệm vụ.</p><p>Di chuyển bằng các nút mũi tên. Không có vũ khí — chỉ là trò đuổi bắt vui nhộn.</p><button id="start">BẮT ĐẦU CHƠI</button></div></div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d'),stats=document.getElementById('stats'),overlay=document.getElementById('overlay'),toast=document.getElementById('toast');
+let W=800,H=600,scale=1,started=false,won=false,lost=false,score=0,time=90,last=0,toastTimer=0;
+const player={x:100,y:100,r:15,s:190}, thief={x:650,y:440,r:15,s:95};
+let keys={},papers=[];
+function resize(){const dpr=Math.min(devicePixelRatio||1,2),r=c.getBoundingClientRect();c.width=r.width*dpr;c.height=r.height*dpr;W=r.width;H=r.height;ctx.setTransform(dpr,0,0,dpr,0,0);scale=Math.min(W/800,H/600)}
+window.addEventListener('resize',resize);resize();
+function newPapers(){papers=[];for(let i=0;i<5;i++)papers.push({x:90+(i*137)% (W-150),y:90+(i*89)%(H-150),got:false})}
+function say(t){toast.textContent=t;toast.style.display='block';toastTimer=2.2}
+function reset(){player.x=W*.15;player.y=H*.2;thief.x=W*.8;thief.y=H*.75;score=0;time=90;won=lost=false;newPapers();stats.textContent='⭐ 0/5 hồ sơ · ⏱ 90s'}
+function start(){reset();started=true;overlay.style.display='none';say('Thu thập đủ 5 hồ sơ!')}
+document.getElementById('start').onclick=start;
+function bind(id,k){let b=document.getElementById(id);b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true;b.setPointerCapture(e.pointerId)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,e=>{keys[k]=false}))}
+bind('up','up');bind('down','down');bind('left','left');bind('right','right');
+window.addEventListener('keydown',e=>{let m={ArrowUp:'up',w:'up',ArrowDown:'down',s:'down',ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right'};if(m[e.key])keys[m[e.key]]=true});
+window.addEventListener('keyup',e=>{let m={ArrowUp:'up',w:'up',ArrowDown:'down',s:'down',ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right'};if(m[e.key])keys[m[e.key]]=false});
+function clamp(p){p.x=Math.max(25,Math.min(W-25,p.x));p.y=Math.max(25,Math.min(H-25,p.y))}
+function update(dt){if(!started||won||lost)return;time-=dt;if(time<=0){time=0;lost=true;finish('HẾT GIỜ!','Bạn chưa thu thập đủ hồ sơ. Thử lại nhé.')}
+let dx=(keys.right?1:0)-(keys.left?1:0),dy=(keys.down?1:0)-(keys.up?1:0),len=Math.hypot(dx,dy)||1;
+player.x+=dx/len*player.s*dt;player.y+=dy/len*player.s*dt;clamp(player);
+let tx=player.x-thief.x,ty=player.y-thief.y,dist=Math.hypot(tx,ty)||1;
+if(dist<210){thief.x-=tx/dist*thief.s*dt;thief.y-=ty/dist*thief.s*dt}else{thief.x+=Math.sin(performance.now()/800)*25*dt;thief.y+=Math.cos(performance.now()/900)*25*dt}clamp(thief);
+for(let p of papers)if(!p.got&&Math.hypot(player.x-p.x,player.y-p.y)<30){p.got=true;score++;say('Đã lấy hồ sơ!');}
+if(score===5&&Math.hypot(player.x-thief.x,player.y-thief.y)<34){won=true;finish('NHIỆM VỤ HOÀN THÀNH!','Bạn đã thu thập đủ hồ sơ và bắt được tên trộm. Thị trấn an toàn!')}
+stats.textContent=`⭐ ${score}/5 hồ sơ · ⏱ ${Math.ceil(time)}s`;
+if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.style.display='none'}
+}
+function finish(title,msg){overlay.innerHTML=`<div class="panel"><h2>${title}</h2><p>${msg}</p><button id="again">CHƠI LẠI</button></div>`;overlay.style.display='flex';document.getElementById('again').onclick=()=>{overlay.innerHTML='<div class="panel"><h2>🚔 THỊ TRẤN</h2><p>Thu thập <b>5 hồ sơ</b> màu vàng rồi chạm vào tên trộm để hoàn thành nhiệm vụ.</p><button id="start">BẮT ĐẦU CHƠI</button></div>';document.getElementById('start').onclick=start;};}
+function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#83c981';ctx.fillRect(0,0,W,H);
+// roads
+ctx.fillStyle='#687783';ctx.fillRect(0,H*.43,W,H*.18);ctx.fillRect(W*.43,0,W*.16,H);
+ctx.strokeStyle='#e8e4b7';ctx.lineWidth=3;ctx.setLineDash([18,15]);ctx.beginPath();ctx.moveTo(0,H*.52);ctx.lineTo(W,H*.52);ctx.moveTo(W*.51,0);ctx.lineTo(W*.51,H);ctx.stroke();ctx.setLineDash([]);
+// buildings
+for(let x=25;x<W-60;x+=135){for(let y=25;y<H-75;y+=145){if((x>W*.35&&x<W*.62)||(y>H*.40&&y<H*.62))continue;ctx.fillStyle='#d6b68a';ctx.fillRect(x,y,75,58);ctx.fillStyle='#9a654e';ctx.beginPath();ctx.moveTo(x-5,y);ctx.lineTo(x+37,y-20);ctx.lineTo(x+80,y);ctx.fill();ctx.fillStyle='#8bd0e8';ctx.fillRect(x+12,y+18,14,15);ctx.fillRect(x+49,y+18,14,15);}}
+for(let p of papers)if(!p.got){ctx.fillStyle='#ffd84d';ctx.fillRect(p.x-9,p.y-12,18,24);ctx.strokeStyle='#9a6d00';ctx.strokeRect(p.x-9,p.y-12,18,24);ctx.fillStyle='#694c00';ctx.fillRect(p.x-5,p.y-5,10,2);ctx.fillRect(p.x-5,p.y,10,2)}
+// thief
+ctx.fillStyle='#7a3445';ctx.beginPath();ctx.arc(thief.x,thief.y,thief.r,0,Math.PI*2);ctx.fill();ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText('🦹',thief.x,thief.y-20);
+// player
+ctx.fillStyle='#174d9a';ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();ctx.font='20px sans-serif';ctx.fillText('👮',player.x,player.y-20);
+ctx.textAlign='left';
+}
+function loop(t){let dt=Math.min((t-last)/1000||0,.04);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script>
+</body></html>
